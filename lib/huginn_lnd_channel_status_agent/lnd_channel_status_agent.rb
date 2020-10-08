@@ -17,6 +17,8 @@ module Agents
 
       `with_confirmations` is used to avoid an event as soon as it increases.
 
+      `debug` is used to verbose mode.
+
       `type` can be tokentx type (you can see api documentation).
       Get a list of "ERC20 - Token Transfer Events" by Address
 
@@ -54,6 +56,7 @@ module Agents
       {
         'url' => '',
         'changes_only' => 'true',
+        'debug' => 'false',
         'expected_receive_period_in_days' => '2',
         'macaroon' => '',
       }
@@ -62,6 +65,7 @@ module Agents
     form_configurable :url, type: :string
     form_configurable :changes_only, type: :boolean
     form_configurable :macaroon, type: :string
+    form_configurable :debug, type: :boolean
     form_configurable :expected_receive_period_in_days, type: :string
     def validate_options
       unless options['url'].present?
@@ -74,6 +78,10 @@ module Agents
 
       unless options['macaroon'].present?
         errors.add(:base, "macaroon is a required field")
+      end
+
+      if options.has_key?('debug') && boolify(options['debug']).nil?
+        errors.add(:base, "if provided, debug must be true or false")
       end
 
       unless options['expected_receive_period_in_days'].present? && options['expected_receive_period_in_days'].to_i > 0
@@ -121,6 +129,9 @@ module Agents
 
       payload = JSON.parse(response.body)
 
+      if interpolated['debug'] == 'true'
+        log payload
+      end
       if interpolated['changes_only'] == 'true'
         if payload['channels'].to_s != memory['last_status']
           if "#{memory['last_status']}" == ''
@@ -133,19 +144,26 @@ module Agents
             payload['channels'].each do |channel|
               found = false
               last_status['channels'].each do |channelbis|
-                if channel['chan_id'] == channelbis['chan_id'] && channel['status'] == channelbis['status']
-                    found = true
+                if channel['chan_id'] == channelbis['chan_id'] && channel['active'] == channelbis['active']
+                  found = true
+                  if interpolated['debug'] == 'true'
+                    log "channel"
+                    log channel
+                  end
                 end
               end
               if found == false
-                  create_event payload: channel
+                if interpolated['debug'] == 'true'
+                  log "found is #{found}! so event created"
+                  log channel
+                end
+                create_event payload: channel
               end
             end
           end
           memory['last_status'] = payload.to_s
         end
       else
-        log  payload['channels']
         create_event payload: payload
         if payload.to_s != memory['last_status']
           memory['last_status'] = payload.to_s
